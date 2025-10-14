@@ -26,7 +26,6 @@ else
   echo "[WARNING] Virtualenv pip not found at $VENV/bin/pip. Skipping pip install."
 fi
 
-
 echo "[SYSTEMD] restart catty-reminders"
 
 sudo -n /usr/bin/systemctl restart catty-reminders || {
