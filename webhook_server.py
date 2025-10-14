@@ -30,7 +30,7 @@ class WebhookHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.send_header("Content-type", "text/html; charset=utf-8")
-        self.end_headers()
+        # не обязательно, но можно указать длину и закрытие соединения:
         html = f"""
         <html>
         <head><title>Catty Reminders Webhook</title></head>
@@ -43,8 +43,15 @@ class WebhookHandler(BaseHTTPRequestHandler):
         </body>
         </html>
         """
-        self.wfile.write(html.encode("utf-8"))
-
+        body = html.encode("utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Connection", "close")
+        self.end_headers()
+        try:
+            self.wfile.write(body)
+        except BrokenPipeError:
+            return
+        
     def do_POST(self):
         try:
             length = int(self.headers.get("Content-Length", 0))
@@ -175,18 +182,28 @@ class WebhookHandler(BaseHTTPRequestHandler):
             return False
 
     def _ok(self):
+        payload = b'{"status":"success","message":"Webhook processed"}'
         self.send_response(200)
         self.send_header("Content-type", "application/json")
+        self.send_header("Content-Length", str(len(payload)))
+        self.send_header("Connection", "close")
         self.end_headers()
-        self.wfile.write(b'{"status":"success","message":"Webhook processed"}')
+        try:
+            self.wfile.write(payload)
+        except BrokenPipeError:
+            return
 
     def _err(self, code, msg):
+        body = json.dumps({"status": "error", "message": msg}).encode("utf-8")
         self.send_response(code)
         self.send_header("Content-type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Connection", "close")
         self.end_headers()
-        self.wfile.write(
-            json.dumps({"status": "error", "message": msg}).encode("utf-8")
-        )
+        try:
+            self.wfile.write(body)
+        except BrokenPipeError:
+            return
 
 
 def main():
