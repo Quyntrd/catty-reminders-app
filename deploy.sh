@@ -5,7 +5,9 @@ APP_DIR="/home/vboxuser/Desktop/DevOps/catty-reminders-app"
 VENV="$APP_DIR/.venv"
 LOG="$APP_DIR/deploy.log"
 
-sudo sed -i 's|exec > >(tee -a "$LOG") 2>&1|exec > >(/usr/bin/tee -a "$LOG") 2>&1|' /home/vboxuser/Desktop/DevOps/catty-reminders-app/deploy.sh
+# Логирование: используем абсолютный путь к tee
+#   (НЕ выполняем sudo здесь — эту замену делаем один раз вручную при установке)
+exec > >(/usr/bin/tee -a "$LOG") 2>&1
 
 echo "===== $(date '+%F %T') | START DEPLOY ====="
 
@@ -28,10 +30,14 @@ fi
 
 echo "[SYSTEMD] restart catty-reminders"
 
-sudo -n /usr/bin/systemctl restart catty-reminders || {
-  echo "[ERROR] Failed to restart catty-reminders via sudo. Check sudoers or run manually."
+# Пытаемся перезапустить сервис через sudo. Ожидается правило NOPASSWD в sudoers для этой команды.
+if sudo -n /usr/bin/systemctl restart catty-reminders; then
+  echo "[SYSTEMD] restart command completed"
+else
+  echo "[ERROR] Failed to restart catty-reminders via sudo. Check sudoers (NOPASSWD) or run manually."
+  # Возвращаем код ошибки 3 — это можно обработать выше уровнем (webhook)
   exit 3
-}
+fi
 
 # Показать статус (не аварийно)
 sudo -n /usr/bin/systemctl status catty-reminders --no-pager || true
