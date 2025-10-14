@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
-Webhook сервер для автоматического деплоя Catty Reminders.
-Запускает тесты из виртуального окружения приложения и при успехе вызывает deploy.sh.
+Webhook сервер для автоматического деплоя Catty Reminders (без UI-тестов)
 """
 
 import sys
@@ -10,12 +9,10 @@ import subprocess
 import os
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from datetime import datetime
-from pathlib import Path
 
 PORT = 8080
 APP_DIR = "/home/vboxuser/Desktop/DevOps/catty-reminders-app"
 DEPLOY_SCRIPT = "/home/vboxuser/Desktop/DevOps/catty-reminders-app/deploy.sh"
-VENV_PYTHON = os.path.join(APP_DIR, ".venv", "bin", "python")
 
 class WebhookHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
@@ -30,7 +27,7 @@ class WebhookHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.send_header("Content-type", "text/html; charset=utf-8")
-        # не обязательно, но можно указать длину и закрытие соединения:
+        self.end_headers()
         html = f"""
         <html>
         <head><title>Catty Reminders Webhook</title></head>
@@ -43,15 +40,8 @@ class WebhookHandler(BaseHTTPRequestHandler):
         </body>
         </html>
         """
-        body = html.encode("utf-8")
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Connection", "close")
-        self.end_headers()
-        try:
-            self.wfile.write(body)
-        except BrokenPipeError:
-            return
-        
+        self.wfile.write(html.encode("utf-8"))
+
     def do_POST(self):
         try:
             length = int(self.headers.get("Content-Length", 0))
@@ -59,14 +49,13 @@ class WebhookHandler(BaseHTTPRequestHandler):
             print("🎯 POST запрос получен")
             print(f"   Content-Length: {length}")
 
-            try:
-                payload = json.loads(body.decode("utf-8"))
-            except json.JSONDecodeError:
-                payload = {}
+            payload = json.loads(body.decode("utf-8"))
             event = self.headers.get("X-GitHub-Event", "unknown")
 
             print(f"🔔 GitHub Event: {event}")
-            print(f"📦 Репозиторий: {payload.get('repository', {}).get('full_name', 'unknown')}")
+            print(
+                f"📦 Репозиторий: {payload.get('repository', {}).get('full_name', 'unknown')}"
+            )
 
             if event == "push":
                 self.handle_push(payload)
@@ -83,16 +72,12 @@ class WebhookHandler(BaseHTTPRequestHandler):
         branch = payload.get("ref", "").replace("refs/heads/", "")
         commits = len(payload.get("commits", []))
         clone = payload.get("repository", {}).get("clone_url", "")
-        print(f"   Ветка: {branch or '<не указана>'}")
+        print(f"   Ветка: {branch}")
         print(f"   Коммитов: {commits}")
-        print(f"   Clone URL: {clone or '<не указана>'}")
+        print(f"   Clone URL: {clone}")
 
-        # Запускаем тесты из virtualenv приложения
-        tests_ok = self.run_tests()
-        if tests_ok:
-            deploy_ok = self.run_deploy()
-            if not deploy_ok:
-                print("❌ Деплой завершился с ошибкой")
+        if self.run_tests():
+            self.run_deploy()
         else:
             print("❌ Тесты не пройдены, деплой отменен")
 
@@ -102,11 +87,6 @@ class WebhookHandler(BaseHTTPRequestHandler):
             ("Unit тесты", "test_unit.py"),
             ("API тесты", "test_api.py"),
         ]
-
-        # Если venv python существует — используем его, иначе используем системный python
-        python_exec = VENV_PYTHON if Path(VENV_PYTHON).exists() else sys.executable
-        print(f"🔧 Используем python: {python_exec}")
-
         env = os.environ.copy()
         env["PYTHONPATH"] = f"{APP_DIR}:{os.path.join(APP_DIR,'tests')}"
         env.setdefault("BASE_URL", "http://127.0.0.1:8181")
@@ -115,11 +95,12 @@ class WebhookHandler(BaseHTTPRequestHandler):
         for name, fname in test_files:
             path = os.path.join(APP_DIR, "tests", fname)
             if not os.path.exists(path):
-                print(f"   ⚠️  {name}: файл не найден - {path} (пропускаем)")
+                print(f"   ⚠️  {name}: файл не найден - {path}")
                 continue
-            print(f"   🔍 Запускаем {name} ({path}) ...")
+
+            print(f"   🔍 Запускаем {name}...")
             try:
-                cmd = [python_exec, "-m", "pytest", path, "-q", "-rA"]
+                cmd = [sys.executable, "-m", "pytest", path, "-v"]
                 res = subprocess.run(
                     cmd,
                     cwd=APP_DIR,
@@ -131,11 +112,9 @@ class WebhookHandler(BaseHTTPRequestHandler):
                 if res.returncode == 0:
                     print(f"   ✅ {name}: ПРОЙДЕНЫ")
                 else:
-                    print(f"   ❌ {name}: ПРОВАЛЕНЫ (код {res.returncode})")
+                    print(f"   ❌ {name}: ПРОВАЛЕНЫ")
                     snippet = (res.stderr or res.stdout or "")[-4000:]
-                    print("---- test output (tail) ----")
                     print(snippet)
-                    print("---- end output ----")
                     all_ok = False
             except subprocess.TimeoutExpired:
                 print(f"   ⏰ {name}: ТАЙМАУТ")
@@ -161,18 +140,12 @@ class WebhookHandler(BaseHTTPRequestHandler):
             )
             if res.returncode == 0:
                 print("✅ ДЕПЛОЙ УСПЕШНО ЗАВЕРШЕН!")
-                print("---- deploy stdout ----")
-                print(res.stdout)
-                print("---- deploy stderr ----")
-                print(res.stderr)
+                print(f"   Вывод: {res.stdout}")
                 return True
             else:
                 print("❌ ОШИБКА ДЕПЛОЯ!")
                 print(f"   Код: {res.returncode}")
-                print("---- deploy stdout ----")
-                print(res.stdout)
-                print("---- deploy stderr ----")
-                print(res.stderr)
+                print(f"   Stderr: {res.stderr}")
                 return False
         except subprocess.TimeoutExpired:
             print("⏰ ТАЙМАУТ ДЕПЛОЯ!")
@@ -182,28 +155,18 @@ class WebhookHandler(BaseHTTPRequestHandler):
             return False
 
     def _ok(self):
-        payload = b'{"status":"success","message":"Webhook processed"}'
         self.send_response(200)
         self.send_header("Content-type", "application/json")
-        self.send_header("Content-Length", str(len(payload)))
-        self.send_header("Connection", "close")
         self.end_headers()
-        try:
-            self.wfile.write(payload)
-        except BrokenPipeError:
-            return
+        self.wfile.write(b'{"status":"success","message":"Webhook processed"}')
 
     def _err(self, code, msg):
-        body = json.dumps({"status": "error", "message": msg}).encode("utf-8")
         self.send_response(code)
         self.send_header("Content-type", "application/json")
-        self.send_header("Content-Length", str(len(body)))
-        self.send_header("Connection", "close")
         self.end_headers()
-        try:
-            self.wfile.write(body)
-        except BrokenPipeError:
-            return
+        self.wfile.write(
+            json.dumps({"status": "error", "message": msg}).encode("utf-8")
+        )
 
 
 def main():
@@ -214,13 +177,7 @@ def main():
     print(f"🔧 Deploy script: {DEPLOY_SCRIPT}")
     print("\n👂 Ожидаем webhook запросы...\n")
     server = HTTPServer(("0.0.0.0", PORT), WebhookHandler)
-    try:
-        server.serve_forever()
-    except KeyboardInterrupt:
-        print("🛑 Server stopped by user")
-    finally:
-        server.server_close()
-
+    server.serve_forever()
 
 
 if __name__ == "__main__":
