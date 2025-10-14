@@ -5,7 +5,7 @@ APP_DIR="/home/vboxuser/Desktop/DevOps/catty-reminders-app"
 VENV="$APP_DIR/.venv"
 LOG="$APP_DIR/deploy.log"
 
-exec > >(tee -a "$LOG") 2>&1
+sudo sed -i 's|exec > >(tee -a "$LOG") 2>&1|exec > >(/usr/bin/tee -a "$LOG") 2>&1|' /home/vboxuser/Desktop/DevOps/catty-reminders-app/deploy.sh
 
 echo "===== $(date '+%F %T') | START DEPLOY ====="
 
