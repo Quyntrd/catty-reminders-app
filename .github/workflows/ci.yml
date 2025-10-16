@@ -17,7 +17,33 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      
+
+      - name: Install apt dependencies required by playwright
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libnss3 libatk1.0-0 libatk-bridge2.0-0 libcups2 \
+            libxss1 libxcomposite1 libxrandr2 libasound2t64 libpangocairo-1.0-0 \
+            libxshmfence1 libgbm1 libgtk-3-0 libdrm2 ca-certificates --no-install-recommends
+
+      - name: Create venv & install python deps
+        run: |
+          python -m venv .venv
+          source .venv/bin/activate
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          if [ -f requirements-test.txt ]; then pip install -r requirements-test.txt; fi
+          # установить playwright python package
+          pip install playwright pytest
+
+          if [ -f setup.py ] || [ -f pyproject.toml ]; then
+            pip install -e .
+          fi
+
+      - name: Install Playwright browsers
+        run: |
+          source .venv/bin/activate
+          python -m playwright install --with-deps
+
       - name: Start application (background) and wait for port 8181
         env:
           PYTHONPATH: ${{ github.workspace }}
@@ -35,7 +61,6 @@ jobs:
             echo "Waiting for 127.0.0.1:8181... ($i)"
             sleep 1
           done
-
 
       - name: Run tests
         env:
