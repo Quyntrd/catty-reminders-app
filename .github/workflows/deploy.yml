@@ -1,16 +1,14 @@
-name: Deploy
+name: CD (ssh-agent)
 
 on:
-  workflow_run:
-    workflows: ["CI — Catty Reminders"]
-    types:
-      - completed
   release:
     types: [published]
+  push:
+    tags:
+      - "v*"
 
 jobs:
   deploy:
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -26,5 +24,4 @@ jobs:
 
       - name: Run remote deploy script via ssh
         run: |
-          ssh -o StrictHostKeyChecking=no -p 2452 vboxuser@course.prafdin.ru \
-          'set -euxo pipefail; sudo -n systemctl status frpc --no-pager; cd /home/vboxuser/Desktop/DevOps/catty-reminders-app; bash -x ./deploy.sh'
+          ssh -o StrictHostKeyChecking=no -p 2452 vboxuser@course.prafdin.ru 'set -euxo pipefail; sudo -n systemctl status frpc --no-pager; cd /home/vboxuser/Desktop/DevOps/catty-reminders-app; bash -x ./deploy.sh'
