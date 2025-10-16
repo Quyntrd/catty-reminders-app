@@ -5,10 +5,12 @@ on:
     workflows: ["CI — Catty Reminders"]
     types:
       - completed
+  release:
+    types: [published]
 
 jobs:
   deploy:
-    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'release' }}
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
