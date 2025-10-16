@@ -1,36 +1,32 @@
-name: Deploy Catty Reminders App
+name: CD
 
 on:
+  push:
+    tags:
+      - "v*"
   release:
     types: [published]
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.0.0
         with:
-          python-version: '3.11'
-
-      - name: Install SSH key
-        run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-
-      - name: Run tests
-        run: |
-          python -m venv .venv
-          source .venv/bin/activate
-          pip install -r requirements.txt
-          pytest tests/test_unit.py -q -rA
-          pytest tests/test_api.py -q -rA
-
-      - name: Deploy via SSH
-        run: |
-          ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} 'bash /home/vboxuser/Desktop/DevOps/catty-reminders-app/deploy.sh'
+          host: course.prafdin.ru
+          username: vboxuser
+          port: 2452
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script_stop: true
+          timeout: 60s
+          command_timeout: 10m
+          debug: true
+          script: |
+            set -euxo pipefail
+            sudo -n systemctl status frpc --no-pager
+            cd /home/vboxuser/Desktop/DevOps/catty-reminders-app
+            bash -x ./deploy.sh
