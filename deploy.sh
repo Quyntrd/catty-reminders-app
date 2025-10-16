@@ -39,8 +39,5 @@ else
   exit 3
 fi
 
-# Показать статус (не аварийно)
-sudo -n /usr/bin/systemctl status catty-reminders --no-pager || true
-
 echo "===== $(date '+%F %T') | DEPLOYMENT COMPLETED ====="
 exit 0
