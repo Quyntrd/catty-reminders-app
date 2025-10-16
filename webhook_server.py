@@ -19,15 +19,12 @@ VENV_PYTHON = os.path.join(APP_DIR, ".venv", "bin", "python")
 class WebhookHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        # Новая формулировка для системного логирования
         print(f"🔔 [{ts}] {format % args}")
 
-    # helpers to safely write response
     def _safe_write(self, b: bytes):
         try:
             self.wfile.write(b)
         except BrokenPipeError:
-            # Клиент закрыл соединение — корректно пропускаем запись
             return False
         return True
 
@@ -38,7 +35,6 @@ class WebhookHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
-        # Обновлённая HTML-страница статуса
         html = f"""
         <!doctype html>
         <html lang="ru">
@@ -107,7 +103,6 @@ class WebhookHandler(BaseHTTPRequestHandler):
 
             self._ok()
         except Exception as e:
-            # Логируем неожиданную ошибку и возвращаем код 500
             print(f"‼️ Ошибка при обработке POST: {e}")
             self._err(500, str(e))
 
