@@ -1,17 +1,13 @@
-name: 🧪 Catty CI Pipeline
+name: 🧪 Catty CI
 
 on:
   push:
-    branches:
-      - main
-      - develop
+    branches: ["*"]
   pull_request:
-    branches:
-      - main
+    branches: ["*"]
 
 jobs:
   test:
-    name: Run Unit & API Tests
     runs-on: ubuntu-latest
 
     steps:
@@ -21,7 +17,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: "3.12"
 
       - name: Install dependencies
         run: |
@@ -29,17 +25,9 @@ jobs:
           source .venv/bin/activate
           pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-          if [ -f requirements-test.txt ]; then pip install -r requirements-test.txt; fi
-          pip install pytest pytest-cov
+          pip install pytest
 
       - name: Run tests
         run: |
           source .venv/bin/activate
-          pytest -v --maxfail=1 --disable-warnings --tb=short
-
-      - name: Upload test report (optional)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-results
-          path: .pytest_cache
+          pytest -v
