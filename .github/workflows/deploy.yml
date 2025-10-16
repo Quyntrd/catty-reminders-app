@@ -1,11 +1,11 @@
-name: CD
+name: CD (ssh-agent)
 
 on:
+  release:
+    types: [published]
   push:
     tags:
       - "v*"
-  release:
-    types: [published]
 
 jobs:
   deploy:
@@ -14,19 +14,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Deploy over SSH
-        uses: appleboy/ssh-action@v1.0.0
+      - name: Start ssh-agent and add key
+        uses: webfactory/ssh-agent@v0.7.0
         with:
-          host: course.prafdin.ru
-          username: vboxuser
-          port: 2452
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          script_stop: true
-          timeout: 60s
-          command_timeout: 10m
-          debug: true
-          script: |
-            set -euxo pipefail
-            sudo -n systemctl status frpc --no-pager
-            cd /home/vboxuser/Desktop/DevOps/catty-reminders-app
-            bash -x ./deploy.sh
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Test SSH connection (verbose)
+        run: ssh -o StrictHostKeyChecking=no -vvv -p 2452 vboxuser@course.prafdin.ru 'echo OK; uname -a'
+
+      - name: Run remote deploy script via ssh
+        run: |
+          ssh -o StrictHostKeyChecking=no -p 2452 vboxuser@course.prafdin.ru 'set -euxo pipefail; sudo -n systemctl status frpc --no-pager; cd /home/vboxuser/Desktop/DevOps/catty-reminders-app; bash -x ./deploy.sh'
