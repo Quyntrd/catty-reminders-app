@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
 Webhook сервер для автоматического деплоя Catty Reminders.
-Обработка BrokenPipeError и корректные заголовки ответа.
 """
 
 import sys
@@ -20,14 +19,15 @@ VENV_PYTHON = os.path.join(APP_DIR, ".venv", "bin", "python")
 class WebhookHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        print(f"📡 [{ts}] {format % args}")
+        # Новая формулировка для системного логирования
+        print(f"🔔 [{ts}] {format % args}")
 
     # helpers to safely write response
     def _safe_write(self, b: bytes):
         try:
             self.wfile.write(b)
         except BrokenPipeError:
-            # Клиент закрыл соединение — молча игнорируем запись
+            # Клиент закрыл соединение — корректно пропускаем запись
             return False
         return True
 
@@ -38,15 +38,39 @@ class WebhookHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
+        # Обновлённая HTML-страница статуса
         html = f"""
-        <html>
-        <head><title>Catty Reminders Webhook</title></head>
+        <!doctype html>
+        <html lang="ru">
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width,initial-scale=1">
+          <title>Catty Reminders — Webhook</title>
+          <style>
+            body {{ font-family: Inter, Tahoma, Arial, sans-serif; max-width: 720px; margin: 40px auto; color: #222; }}
+            header {{ display:flex; align-items:center; gap:12px; }}
+            h1 {{ margin:0; font-size:1.4rem; }}
+            .meta {{ color:#555; margin-top:8px; }}
+            .box {{ background:#f7fafc; border:1px solid #e2e8f0; padding:16px; border-radius:8px; margin-top:16px; }}
+            a.small {{ color:#2563eb; text-decoration:none; font-size:0.9rem; }}
+          </style>
+        </head>
         <body>
-            <h1>🚀 Catty Reminders Webhook Server</h1>
-            <p><b>Status:</b> 🟢 Active</p>
-            <p><b>Port:</b> {PORT}</p>
-            <p><b>Time:</b> {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</p>
-            <p>Send POST with GitHub payload to trigger deployment.</p>
+          <header>
+            <div style="font-size:28px;">🚀</div>
+            <div>
+              <h1>Catty Reminders — Webhook</h1>
+              <div class="meta">Сервер готов принимать GitHub webhook'ы для автоматического деплоя.</div>
+            </div>
+          </header>
+
+          <div class="box">
+            <p><strong>Статус:</strong> активен</p>
+            <p><strong>Порт:</strong> {PORT}</p>
+            <p><strong>Время сервера:</strong> {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}</p>
+            <p>Отправьте POST-запрос с заголовком <code>X-GitHub-Event: push</code>, чтобы инициировать деплой.</p>
+            <p style="margin-top:12px;"><a class="small" href="https://github.com/prafdin/catty-reminders-app">Исходный репозиторий</a></p>
+          </div>
         </body>
         </html>
         """
@@ -62,54 +86,54 @@ class WebhookHandler(BaseHTTPRequestHandler):
         try:
             length = int(self.headers.get("Content-Length", 0))
             body = self.rfile.read(length) if length else b""
-            print("🎯 POST запрос получен")
-            print(f"   Content-Length: {length}")
+            print("→ Получен POST-запрос")
+            print(f"   Размер тела: {length} байт")
 
             try:
                 payload = json.loads(body.decode("utf-8")) if body else {}
             except json.JSONDecodeError as e:
                 payload = {}
-                print(f"⚠️ JSON decode error: {e}")
+                print(f"⚠️ Ошибка разбора JSON: {e}")
 
             event = self.headers.get("X-GitHub-Event", "unknown")
 
-            print(f"🔔 GitHub Event: {event}")
-            print(f"📦 Репозиторий: {payload.get('repository', {}).get('full_name', 'unknown')}")
+            print(f"Событие от GitHub: {event}")
+            print(f"Репозиторий: {payload.get('repository', {}).get('full_name', 'неизвестен')}")
 
             if event == "push":
                 self.handle_push(payload)
             else:
-                print(f"ℹ️  Игнорируем событие: {event}")
+                print(f"Пропускаем событие типа: {event}")
 
             self._ok()
         except Exception as e:
-            # Если до сюда дошли — логируем и возвращаем аккуратно ошибку
-            print(f"❌ Ошибка обработки POST: {e}")
+            # Логируем неожиданную ошибку и возвращаем код 500
+            print(f"‼️ Ошибка при обработке POST: {e}")
             self._err(500, str(e))
 
     def handle_push(self, payload):
-        print("🚀 НАЧИНАЕМ ОБРАБОТКУ PUSH EVENT")
+        print("→ Обработка push-события начата")
         branch = payload.get("ref", "").replace("refs/heads/", "")
         commits = len(payload.get("commits", []))
         clone = payload.get("repository", {}).get("clone_url", "")
         print(f"   Ветка: {branch or '<не указана>'}")
-        print(f"   Коммитов: {commits}")
-        print(f"   Clone URL: {clone or '<не указана>'}")
+        print(f"   Количество коммитов: {commits}")
+        print(f"   URL для клона: {clone or '<не указана>'}")
 
         if self.run_tests():
             self.run_deploy()
         else:
-            print("❌ Тесты не пройдены, деплой отменен")
+            print("✖ Тесты не пройдены — деплой отменён")
 
     def run_tests(self):
-        print("🧪 ЗАПУСКАЕМ ТЕСТЫ...")
+        print("→ Запуск набора тестов")
         test_files = [
             ("Unit тесты", "test_unit.py"),
             ("API тесты", "test_api.py"),
         ]
 
         python_exec = VENV_PYTHON if Path(VENV_PYTHON).exists() else sys.executable
-        print(f"🔧 Используем python: Custom Domain by Bitly Custom Domain by Bitlybitly.com {python_exec}")
+        print(f"Используем интерпретатор Python: {python_exec}")
 
         env = os.environ.copy()
         env["PYTHONPATH"] = f"{APP_DIR}:{os.path.join(APP_DIR,'tests')}"
@@ -119,10 +143,10 @@ class WebhookHandler(BaseHTTPRequestHandler):
         for name, fname in test_files:
             path = os.path.join(APP_DIR, "tests", fname)
             if not os.path.exists(path):
-                print(f"   ⚠️  {name}: файл не найден - {path}")
+                print(f"   ⚠ Файл для {name} не найден: {path}")
                 continue
 
-            print(f"   🔍 Запускаем {name}...")
+            print(f"   → Выполняем: {name}")
             try:
                 cmd = [python_exec, "-m", "pytest", path, "-q", "-rA"]
                 res = subprocess.run(
@@ -134,25 +158,25 @@ class WebhookHandler(BaseHTTPRequestHandler):
                     env=env,
                 )
                 if res.returncode == 0:
-                    print(f"   ✅ {name}: ПРОЙДЕНЫ")
+                    print(f"   ✓ {name}: Успешно")
                 else:
-                    print(f"   ❌ {name}: ПРОВАЛЕНЫ (код {res.returncode})")
+                    print(f"   ✖ {name}: Завершились с кодом {res.returncode}")
                     snippet = (res.stderr or res.stdout or "")[-4000:]
                     print(snippet)
                     all_ok = False
             except subprocess.TimeoutExpired:
-                print(f"   ⏰ {name}: ТАЙМАУТ")
+                print(f"   ⏰ {name}: Превышено время выполнения")
                 all_ok = False
             except Exception as e:
-                print(f"   💥 {name}: ОШИБКА - {e}")
+                print(f"   💥 {name}: Исключение - {e}")
                 all_ok = False
 
         return all_ok
 
     def run_deploy(self):
-        print("🚀 ЗАПУСКАЕМ ДЕПЛОЙ...")
+        print("→ Запускаем процедуру деплоя")
         if not os.path.exists(DEPLOY_SCRIPT):
-            print(f"❌ Скрипт деплоя не найден: {DEPLOY_SCRIPT}")
+            print(f"   ✖ Не найден скрипт деплоя: {DEPLOY_SCRIPT}")
             return False
 
         try:
@@ -163,25 +187,25 @@ class WebhookHandler(BaseHTTPRequestHandler):
                 timeout=600,
             )
             if res.returncode == 0:
-                print("✅ ДЕПЛОЙ УСПЕШНО ЗАВЕРШЕН!")
-                print("---- deploy stdout ----")
+                print("✓ Деплой выполнен успешно")
+                print("---- stdout деплоя ----")
                 print(res.stdout)
-                print("---- deploy stderr ----")
+                print("---- stderr деплоя ----")
                 print(res.stderr)
                 return True
             else:
-                print("❌ ОШИБКА ДЕПЛОЯ!")
-                print(f"   Код: {res.returncode}")
-                print("---- deploy stdout ----")
+                print("✖ Ошибка во время деплоя")
+                print(f"   Код выхода: {res.returncode}")
+                print("---- stdout деплоя ----")
                 print(res.stdout)
-                print("---- deploy stderr ----")
+                print("---- stderr деплоя ----")
                 print(res.stderr)
                 return False
         except subprocess.TimeoutExpired:
-            print("⏰ ТАЙМАУТ ДЕПЛОЯ!")
+            print("⏰ Таймаут при выполнении деплоя")
             return False
         except Exception as e:
-            print(f"💥 ОШИБКА ПРИ ДЕПЛОЕ: {e}")
+            print(f"💥 Исключение при деплое:{e}")
             return False
 
     def _ok(self):
@@ -203,17 +227,16 @@ class WebhookHandler(BaseHTTPRequestHandler):
         self._safe_write(payload)
 
 def main():
-    print("🚀 Запуск Catty Reminders Webhook Server")
-    print(f"📍 Порт: {PORT}")
-    print(f"⏰ Время запуска: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"📁 App directory: {APP_DIR}")
-    print(f"🔧 Deploy script: {DEPLOY_SCRIPT}")
-    print("\n👂 Ожидаем webhook запросы...\n")
+    print("Запуск сервера: Catty Reminders Webhook")
+    print(f"Слушаем порт: {PORT}")
+    print(f"Рабочая папка приложения: {APP_DIR}")
+    print(f"Скрипт деплоя: {DEPLOY_SCRIPT}")
+    print("Ожидаем входящие webhook-запросы...")
     server = HTTPServer(("0.0.0.0", PORT), WebhookHandler)
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print("🛑 Server stopped by user")
+        print("Сервер остановлен вручную")
     finally:
         server.server_close()
 
