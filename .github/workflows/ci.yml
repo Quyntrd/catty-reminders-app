@@ -50,7 +50,7 @@ jobs:
         run: |
           source .venv/bin/activate
 
-          nohup uvicorn main:app --host 127.0.0.1 --port 8181 > server.log 2>&1 &
+          nohup uvicorn app.main:app --host 127.0.0.1 --port 8181 > server.log 2>&1 &
 
           # Ждём открытия порта 8181 (максимум 60 секунд)
           for i in $(seq 1 60); do
