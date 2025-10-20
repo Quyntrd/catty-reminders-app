@@ -27,6 +27,7 @@ jobs:
           echo "IMAGE_NAME=ghcr.io/${OWNER_LOWER}/catty-reminders-app:latest" >> $GITHUB_ENV
           echo "CONTAINER_NAME=catty-reminders" >> $GITHUB_ENV
           echo "APP_DIR=/home/vboxuser/Desktop/DevOps/catty-reminders-app" >> $GITHUB_ENV
+          echo "ID=terebilkin" >> $GITHUB_ENV
 
       - name: Test SSH connection
         run: ssh -o StrictHostKeyChecking=no -vvv -p 2452 vboxuser@course.prafdin.ru 'echo OK; uname -a'
