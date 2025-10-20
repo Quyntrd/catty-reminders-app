@@ -39,9 +39,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # Если у вас есть Playwright UI-тесты и вы хотите их запускать:
-      - name: Install Playwright browsers (optional, remove if not needed)
-        if: needs_downloads != 'false' || success()
+      # Если у вас есть Playwright UI-тесты — ставим браузеры (выполняется всегда)
+      - name: Install Playwright browsers
         uses: microsoft/playwright-action@v1
         with:
           install-deps: true
@@ -49,7 +48,7 @@ jobs:
       - name: Start app (uvicorn) in background for integration tests
         run: |
           nohup uvicorn app:app --host 0.0.0.0 --port 8181 > uvicorn.log 2>&1 &
-        # Замените app:app на ваш модуль, если нужно
+        # при необходимости замените app:app на ваш модуль/приложение
 
       - name: Wait for app to be ready
         run: |
@@ -84,7 +83,6 @@ jobs:
             ghcr.io/${{ env.IMAGE_NAME }}:latest
             ghcr.io/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
 
-      # Optional: hadolint step (linters)
       - name: Lint Dockerfile (hadolint)
         uses: ludeeus/hadolint-action@v1
         continue-on-error: true
