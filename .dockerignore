@@ -1,0 +1,16 @@
+.venv
+__pycache__
+*.pyc
+*.pyo
+
+.git
+.gitignore
+
+deploy.log
+reminder_db.json
+.vscode
+.idea
+
+node_modules
+
+*.local
