@@ -30,9 +30,9 @@ jobs:
 
             APP_DIR=/home/vboxuser/Desktop/DevOps/catty-reminders-app
             CONTAINER_NAME=catty-reminders
-            IMAGE_NAME=ghcr.io/<USERNAME>/catty-reminders-app:latest
+            IMAGE_NAME=ghcr.io/Qunytrd/catty-reminders-app:latest
 
-            echo $GHCR_PAT | docker login ghcr.io -u <USERNAME> --password-stdin
+            echo $GHCR_PAT | docker login ghcr.io -u Qunytrd --password-stdin
 
             if docker ps -a --format "{{.Names}}" | grep -Eq "^${CONTAINER_NAME}$"; then
               docker stop ${CONTAINER_NAME}
