@@ -33,31 +33,25 @@ jobs:
 
       - name: Deploy Docker container on server
         run: |
-          ssh -o StrictHostKeyChecking=no -p 2452 vboxuser@course.prafdin.ru \
-          "GHCR_PAT='${GHCR_PAT}' IMAGE_NAME='${IMAGE_NAME}' CONTAINER_NAME='${CONTAINER_NAME}' bash -c '
+            ssh -o StrictHostKeyChecking=no -p 2452 vboxuser@course.prafdin.ru bash -c "
             set -euxo pipefail
+            IMAGE_NAME=ghcr.io/qunytrd/catty-reminders-app:latest
+            CONTAINER_NAME=catty-reminders
 
-            echo \"Logging in to GHCR\"
-            echo \"\$GHCR_PAT\" | docker login ghcr.io -u ${OWNER_LOWER} --password-stdin
-
-            # Остановка и удаление старого контейнера
-            if docker ps -a --format \"{{.Names}}\" | grep -Eq \"^${CONTAINER_NAME}$\"; then
-              docker stop \"\${CONTAINER_NAME}\"
-              docker rm \"\${CONTAINER_NAME}\"
+            if docker ps -a --format '{{.Names}}' | grep -Eq '^${CONTAINER_NAME}$'; then
+                docker stop '${CONTAINER_NAME}'
+                docker rm '${CONTAINER_NAME}'
             fi
 
-            # Запуск нового контейнера
-            docker run -d --name \"\${CONTAINER_NAME}\" -p 80:80 -e APP_ENV=production \"\${IMAGE_NAME}\"
+            docker run -d --name '${CONTAINER_NAME}' -p 80:80 -e APP_ENV=production '${IMAGE_NAME}'
 
-            # Проверка доступности приложения через прокси
             for i in \$(seq 1 20); do
-              if curl -s http://app.\$ID.\$PROXY/ >/dev/null; then
-                echo \"App is reachable\"
+                if curl -s http://app.\$ID.\$PROXY/ >/dev/null; then
+                echo 'App is reachable'
                 exit 0
-              fi
-              sleep 1
+                fi
+                sleep 1
             done
-
-            echo \"App is not reachable\" >&2
+            echo 'App is not reachable' >&2
             exit 1
-          '"
+            "
