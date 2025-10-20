@@ -34,15 +34,21 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-
 
-      - name: Install dependencies
+      - name: Create venv & install python deps
         run: |
+          python -m venv .venv
+          source .venv/bin/activate
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+          if [ -f requirements-test.txt ]; then pip install -r requirements-test.txt; fi
+
+          if [ -f setup.py ] || [ -f pyproject.toml ]; then
+            pip install -e .
+          fi
 
       - name: Start app (uvicorn) in background for integration tests
         run: |
           nohup uvicorn app.main:app --host 0.0.0.0 --port 8181 > uvicorn.log 2>&1 &
-        # при необходимости замените app:app на ваш модуль/экспорт
 
       - name: Wait for app to be ready
         run: |
