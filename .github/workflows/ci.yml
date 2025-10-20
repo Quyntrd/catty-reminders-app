@@ -14,12 +14,17 @@ permissions:
 jobs:
   build-test-and-publish:
     runs-on: ubuntu-latest
-    env:
-      IMAGE_NAME: ${{ github.repository_owner }}/catty-reminders-app
-      IMAGE_TAG: ${{ github.sha }}
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Create lowercase IMAGE_NAME and set IMAGE_TAG
+        # Преобразуем владельца репозитория в lower-case и записываем в GITHUB_ENV
+        run: |
+          OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "IMAGE_NAME=${OWNER_LOWER}/catty-reminders-app" >> $GITHUB_ENV
+          echo "IMAGE_TAG=${{ github.sha }}" >> $GITHUB_ENV
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v4
@@ -37,15 +42,16 @@ jobs:
       - name: Create venv & install python deps
         run: |
           python -m venv .venv
-          . .venv/bin/activate
+          source .venv/bin/activate
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           if [ -f requirements-test.txt ]; then pip install -r requirements-test.txt; fi
-          python -m pip install uvicorn || true
+          # если нужен uvicorn/другие зависимости — добавьте их в requirements
 
       - name: Start app (uvicorn) in background for integration tests
         run: |
-          nohup .venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 8181 > uvicorn.log 2>&1 &
+          source .venv/bin/activate
+          nohup uvicorn app.main:app --host 0.0.0.0 --port 8181 > uvicorn.log 2>&1 &
 
       - name: Wait for app to be ready
         run: |
@@ -65,8 +71,8 @@ jobs:
           BASE_URL: http://127.0.0.1:8181
           PYTHONPATH: ${{ github.workspace }}
         run: |
-          . .venv/bin/activate
-          pytest -v -q
+          source .venv/bin/activate
+          pytest -q
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
