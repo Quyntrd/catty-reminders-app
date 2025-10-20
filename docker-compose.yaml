@@ -1,0 +1,49 @@
+# docker-compose.yml
+version: "3.9"
+
+x-common-labels: &common_labels
+  project: catty-reminders
+  managed-by: github-actions
+
+services:
+  web:
+    image: ghcr.io/quyntrd/catty-reminders-app:${IMAGE_TAG:-latest}
+    container_name: catty-reminders
+    restart: unless-stopped
+    depends_on:
+      - db
+    environment:
+      - APP_ENV=${APP_ENV:-production}
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    ports:
+      - "${HOST_PORT:-8181}:${CONTAINER_PORT:-8181}"
+    labels:
+      <<: *common_labels
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:${CONTAINER_PORT:-8181}/"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    networks:
+      - appnet
+
+  db:
+    image: postgres:15
+    container_name: catty-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-catty}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-cattypass}
+      - POSTGRES_DB=${POSTGRES_DB:-cattydb}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    networks:
+      - appnet
+
+volumes:
+  db-data:
+    name: catty_db_data
+
+networks:
+  appnet:
+    name: catty_app_net
