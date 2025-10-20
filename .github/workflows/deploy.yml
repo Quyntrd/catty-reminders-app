@@ -1,11 +1,11 @@
 name: CD (ssh-agent)
 
 on:
-  release:
-    types: [published]
   push:
-    tags:
-      - "v*"
+    branches: ["*"]
+  pull_request:
+    branches: ["*"]
+
 
 jobs:
   deploy:
@@ -24,39 +24,32 @@ jobs:
         run: ssh -o StrictHostKeyChecking=no -vvv -p 2452 vboxuser@course.prafdin.ru 'echo OK; uname -a'
 
       - name: Deploy Docker container from GHCR
-        env:
-          GHCR_PAT: ${{ secrets.GHCR_PAT }}
         run: |
-          ssh -o StrictHostKeyChecking=no -p 2452 vboxuser@course.prafdin.ru '
+            ssh -o StrictHostKeyChecking=no -p 2452 vboxuser@course.prafdin.ru "
             set -euxo pipefail
 
-            APP_DIR=/home/vboxuser/Desktop/DevOps/catty-reminders-app
-            CONTAINER_NAME=catty-reminders
             IMAGE_NAME=ghcr.io/Qunytrd/catty-reminders-app:latest
+            CONTAINER_NAME=catty-reminders
 
-            echo "${GHCR_PAT}" | docker login ghcr.io -u Qunytrd --password-stdin
+            echo \"$GHCR_PAT\" | docker login ghcr.io -u Qunytrd --password-stdin
 
-            if docker ps -a --format "{{.Names}}" | grep -Eq "^${CONTAINER_NAME}$"; then
-              docker stop ${CONTAINER_NAME}
-              docker rm ${CONTAINER_NAME}
+            if docker ps -a --format '{{.Names}}' | grep -Eq \"^${CONTAINER_NAME}$\"; then
+                docker stop ${CONTAINER_NAME}
+                docker rm ${CONTAINER_NAME}
             fi
 
-            docker run -d \
-              --name ${CONTAINER_NAME} \
-              -p 80:80 \
-              -e APP_ENV=production \
-              ${IMAGE_NAME}
+            docker run -d --name ${CONTAINER_NAME} -p 80:80 -e APP_ENV=production ${IMAGE_NAME}
 
-            docker ps | grep ${CONTAINER_NAME}
-
-            for i in $(seq 1 20); do
-              if curl -s http://app.$ID.$PROXY/ >/dev/null; then
-                echo "App is reachable"
+            for i in \$(seq 1 20); do
+                if curl -s http://app.$ID.$PROXY/ >/dev/null; then
+                echo 'App is reachable'
                 exit 0
-              fi
-              sleep 1
+                fi
+                sleep 1
             done
 
-            echo "App is not reachable" >&2
+            echo 'App is not reachable' >&2
             exit 1
-          '
+            "
+        env:
+            GHCR_PAT: ${{ secrets.GHCR_PAT }}
