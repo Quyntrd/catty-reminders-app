@@ -5,7 +5,7 @@ on:
     types: [published]
   push:
     tags:
-      - "v*"
+      - "v*"    
 
 
 jobs:
@@ -36,7 +36,7 @@ jobs:
         run: |
             ssh -o StrictHostKeyChecking=no -p 2452 vboxuser@course.prafdin.ru bash -c "
             set -euxo pipefail
-            IMAGE_NAME=ghcr.io/qunytrd/catty-reminders-app:latest
+            IMAGE_NAME=ghcr.io/Quyntrd/catty-reminders-app:latest
             CONTAINER_NAME=catty-reminders
 
             if docker ps -a --format '{{.Names}}' | grep -Eq '^${CONTAINER_NAME}$'; then
