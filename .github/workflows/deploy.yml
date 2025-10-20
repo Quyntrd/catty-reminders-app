@@ -1,57 +1,56 @@
-name: CD (ssh-agent)
+name: CD - Deploy Docker Container
 
 on:
+  release:
+    types: [published]
   push:
-    branches: ["*"]
-  pull_request:
-    branches: ["*"]
-
+    tags:
+      - "v*"
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-
+    env:
+      GHCR_PAT: ${{ secrets.GHCR_PAT }}
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Start ssh-agent and add key
-        uses: webfactory/ssh-agent@v0.7.0
-        with:
-          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
-
-      - name: Test SSH connection (verbose)
-        run: ssh -o StrictHostKeyChecking=no -vvv -p 2452 vboxuser@course.prafdin.ru 'echo OK; uname -a'
-
-      - name: Deploy Docker container from GHCR
-        env:
-            GHCR_PAT: ${{ secrets.GHCR_PAT }}
+      - name: Set variables
         run: |
-            ssh -o StrictHostKeyChecking=no -p 2452 vboxuser@course.prafdin.ru \
-            "GHCR_PAT='${GHCR_PAT}' IMAGE_NAME='ghcr.io/Qunytrd/catty-reminders-app:latest' CONTAINER_NAME='catty-reminders' bash -c '
-                set -euxo pipefail
+          OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "OWNER_LOWER=${OWNER_LOWER}" >> $GITHUB_ENV
+          echo "IMAGE_NAME=ghcr.io/${OWNER_LOWER}/catty-reminders-app:latest" >> $GITHUB_ENV
+          echo "CONTAINER_NAME=catty-reminders" >> $GITHUB_ENV
+          echo "APP_DIR=/home/vboxuser/Desktop/DevOps/catty-reminders-app" >> $GITHUB_ENV
 
-                # Логин в GHCR
-                echo \"$GHCR_PAT\" | docker login ghcr.io -u Qunytrd --password-stdin
+      - name: Deploy Docker container on server
+        run: |
+          ssh -o StrictHostKeyChecking=no -p 2452 vboxuser@course.prafdin.ru \
+          "GHCR_PAT='${GHCR_PAT}' IMAGE_NAME='${IMAGE_NAME}' CONTAINER_NAME='${CONTAINER_NAME}' bash -c '
+            set -euxo pipefail
 
-                # Остановка старого контейнера
-                if docker ps -a --format \"{{.Names}}\" | grep -Eq \"^\${CONTAINER_NAME}$\"; then
-                docker stop \"\${CONTAINER_NAME}\"
-                docker rm \"\${CONTAINER_NAME}\"
-                fi
+            echo \"Logging in to GHCR\"
+            echo \"\$GHCR_PAT\" | docker login ghcr.io -u ${OWNER_LOWER} --password-stdin
 
-                # Запуск нового контейнера
-                docker run -d --name \"\${CONTAINER_NAME}\" -p 80:80 -e APP_ENV=production \"\${IMAGE_NAME}\"
+            # Остановка и удаление старого контейнера
+            if docker ps -a --format \"{{.Names}}\" | grep -Eq \"^${CONTAINER_NAME}$\"; then
+              docker stop \"\${CONTAINER_NAME}\"
+              docker rm \"\${CONTAINER_NAME}\"
+            fi
 
-                # Проверка доступности приложения
-                for i in \$(seq 1 20); do
-                if curl -s http://app.\$ID.\$PROXY/ >/dev/null; then
-                    echo \"App is reachable\"
-                    exit 0
-                fi
-                sleep 1
-                done
+            # Запуск нового контейнера
+            docker run -d --name \"\${CONTAINER_NAME}\" -p 80:80 -e APP_ENV=production \"\${IMAGE_NAME}\"
 
-                echo \"App is not reachable\" >&2
-                exit 1
-            '"
+            # Проверка доступности приложения через прокси
+            for i in \$(seq 1 20); do
+              if curl -s http://app.\$ID.\$PROXY/ >/dev/null; then
+                echo \"App is reachable\"
+                exit 0
+              fi
+              sleep 1
+            done
+
+            echo \"App is not reachable\" >&2
+            exit 1
+          '"
