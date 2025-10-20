@@ -39,12 +39,14 @@ jobs:
             IMAGE_NAME=ghcr.io/Quyntrd/catty-reminders-app:latest
             CONTAINER_NAME=catty-reminders
 
-            if docker ps -a --format '{{.Names}}' | grep -Eq '^${CONTAINER_NAME}$'; then
-                docker stop '${CONTAINER_NAME}'
-                docker rm '${CONTAINER_NAME}'
-            fi
+            # Остановить старый контейнер, если существует
+            docker ps -a --format '{{.Names}}' | grep -Eq "^${CONTAINER_NAME}$" && docker stop "${CONTAINER_NAME}" && docker rm "${CONTAINER_NAME}"
 
-            docker run -d --name '${CONTAINER_NAME}' -p 8181:8181 -e APP_ENV=production '${IMAGE_NAME}'
+            # Обновить образ из GHCR
+            docker pull ghcr.io/qunytrd/catty-reminders-app:latest
+
+            # Запустить новый контейнер
+            docker run -d --name "${CONTAINER_NAME}" -p 8181:8181 -e APP_ENV=production ghcr.io/qunytrd/catty-reminders-app:latest
 
             for i in \$(seq 1 20); do
                 if curl -s http://app.terebilkin.course.prafdin.ru/ >/dev/null; then
