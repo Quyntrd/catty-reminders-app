@@ -1,0 +1,52 @@
+name: CD (ssh-agent)
+
+on:
+  release:
+    types: [published]
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Start ssh-agent and add key
+        uses: webfactory/ssh-agent@v0.7.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Test SSH connection (verbose)
+        run: ssh -o StrictHostKeyChecking=no -vvv -p 2452 vboxuser@course.prafdin.ru 'echo OK; uname -a'
+
+      - name: Deploy Docker container
+        run: |
+          ssh -o StrictHostKeyChecking=no -p 2452 vboxuser@course.prafdin.ru '
+            set -euxo pipefail;
+
+            APP_DIR=/home/vboxuser/Desktop/DevOps/catty-reminders-app
+
+            CONTAINER_NAME=catty-reminders
+            IMAGE_NAME=catty-reminders-app:latest
+
+            if docker ps -a --format "{{.Names}}" | grep -Eq "^${CONTAINER_NAME}$"; then
+              docker stop ${CONTAINER_NAME}
+              docker rm ${CONTAINER_NAME}
+            fi
+
+            cd $APP_DIR
+
+            docker run -d \
+              --name ${CONTAINER_NAME} \
+              -p 80:80 \
+              -e APP_ENV=production \
+              ${IMAGE_NAME}
+
+            docker ps | grep ${CONTAINER_NAME}
+
+            curl -f http://app.$ID.$PROXY || echo "App not reachable"
+          '
