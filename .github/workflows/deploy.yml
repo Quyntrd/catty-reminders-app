@@ -1,4 +1,4 @@
-name: CD - Deploy Docker Container
+name: CD (ssh-agent)
 
 on:
   push:
@@ -10,11 +10,15 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    env:
-      GHCR_PAT: ${{ secrets.GHCR_PAT }}
+
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Start ssh-agent and add key
+        uses: webfactory/ssh-agent@v0.7.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
 
       - name: Set variables
         run: |
@@ -24,33 +28,34 @@ jobs:
           echo "CONTAINER_NAME=catty-reminders" >> $GITHUB_ENV
           echo "APP_DIR=/home/vboxuser/Desktop/DevOps/catty-reminders-app" >> $GITHUB_ENV
 
-      - name: Deploy Docker container on server
+      - name: Test SSH connection
+        run: ssh -o StrictHostKeyChecking=no -vvv -p 2452 vboxuser@course.prafdin.ru 'echo OK; uname -a'
+
+      - name: Deploy Docker container from GHCR
+        env:
+            GHCR_PAT: ${{ secrets.GHCR_PAT }}
         run: |
-          ssh -o StrictHostKeyChecking=no -p 2452 vboxuser@course.prafdin.ru \
-          "GHCR_PAT='${GHCR_PAT}' IMAGE_NAME='${IMAGE_NAME}' CONTAINER_NAME='${CONTAINER_NAME}' bash -c '
-            set -euxo pipefail
+            ssh -o StrictHostKeyChecking=no -p 2452 vboxuser@course.prafdin.ru \
+            "GHCR_PAT='${GHCR_PAT}' IMAGE_NAME='ghcr.io/Qunytrd/catty-reminders-app:latest' CONTAINER_NAME='catty-reminders' bash -c '
+                set -euxo pipefail
 
-            echo \"Logging in to GHCR\"
-            echo \"\$GHCR_PAT\" | docker login ghcr.io -u ${OWNER_LOWER} --password-stdin
+                echo \"$GHCR_PAT\" | docker login ghcr.io -u Qunytrd --password-stdin
 
-            # Остановка и удаление старого контейнера
-            if docker ps -a --format \"{{.Names}}\" | grep -Eq \"^${CONTAINER_NAME}$\"; then
-              docker stop \"\${CONTAINER_NAME}\"
-              docker rm \"\${CONTAINER_NAME}\"
-            fi
+                if docker ps -a --format \"{{.Names}}\" | grep -Eq \"^\${CONTAINER_NAME}$\"; then
+                docker stop \"\${CONTAINER_NAME}\"
+                docker rm \"\${CONTAINER_NAME}\"
+                fi
 
-            # Запуск нового контейнера
-            docker run -d --name \"\${CONTAINER_NAME}\" -p 80:80 -e APP_ENV=production \"\${IMAGE_NAME}\"
+                docker run -d --name \"\${CONTAINER_NAME}\" -p 80:80 -e APP_ENV=production \"\${IMAGE_NAME}\"
 
-            # Проверка доступности приложения через прокси
-            for i in \$(seq 1 20); do
-              if curl -s http://app.\$ID.\$PROXY/ >/dev/null; then
-                echo \"App is reachable\"
-                exit 0
-              fi
-              sleep 1
-            done
+                for i in \$(seq 1 20); do
+                if curl -s http://app.\$ID.\$PROXY/ >/dev/null; then
+                    echo \"App is reachable\"
+                    exit 0
+                fi
+                sleep 1
+                done
 
-            echo \"App is not reachable\" >&2
-            exit 1
-          '"
+                echo \"App is not reachable\" >&2
+                exit 1
+            '"
