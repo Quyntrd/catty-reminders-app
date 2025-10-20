@@ -37,18 +37,15 @@ jobs:
       - name: Create venv & install python deps
         run: |
           python -m venv .venv
-          source .venv/bin/activate
+          . .venv/bin/activate
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           if [ -f requirements-test.txt ]; then pip install -r requirements-test.txt; fi
-
-          if [ -f setup.py ] || [ -f pyproject.toml ]; then
-            pip install -e .
-          fi
+          python -m pip install uvicorn || true
 
       - name: Start app (uvicorn) in background for integration tests
         run: |
-          nohup uvicorn app.main:app --host 0.0.0.0 --port 8181 > uvicorn.log 2>&1 &
+          nohup .venv/bin/python -m uvicorn app.main:app --host 0.0.0.0 --port 8181 > uvicorn.log 2>&1 &
 
       - name: Wait for app to be ready
         run: |
@@ -68,7 +65,7 @@ jobs:
           BASE_URL: http://127.0.0.1:8181
           PYTHONPATH: ${{ github.workspace }}
         run: |
-          source .venv/bin/activate
+          . .venv/bin/activate
           pytest -v -q
 
       - name: Login to GitHub Container Registry
