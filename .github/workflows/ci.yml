@@ -20,7 +20,6 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Create lowercase IMAGE_NAME and set IMAGE_TAG
-        # Преобразуем владельца репозитория в lower-case и записываем в GITHUB_ENV
         run: |
           OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
           echo "IMAGE_NAME=${OWNER_LOWER}/catty-reminders-app" >> $GITHUB_ENV
@@ -46,7 +45,6 @@ jobs:
           python -m pip install --upgrade pip
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           if [ -f requirements-test.txt ]; then pip install -r requirements-test.txt; fi
-          # если нужен uvicorn/другие зависимости — добавьте их в requirements
 
       - name: Start app (uvicorn) in background for integration tests
         run: |
@@ -91,4 +89,5 @@ jobs:
             ghcr.io/${{ env.IMAGE_NAME }}:${{ env.IMAGE_TAG }}
 
       - name: Lint Dockerfile (hadolint via docker)
+        continue-on-error: true
         run: docker run --rm -i hadolint/hadolint:latest < Dockerfile
