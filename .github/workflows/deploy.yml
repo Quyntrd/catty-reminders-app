@@ -27,7 +27,6 @@ jobs:
           echo "IMAGE_NAME=ghcr.io/${OWNER_LOWER}/catty-reminders-app:latest" >> $GITHUB_ENV
           echo "CONTAINER_NAME=catty-reminders" >> $GITHUB_ENV
           echo "APP_DIR=/home/vboxuser/Desktop/DevOps/catty-reminders-app" >> $GITHUB_ENV
-          echo "ID=terebilkin" >> $GITHUB_ENV
 
       - name: Test SSH connection
         run: ssh -o StrictHostKeyChecking=no -vvv -p 2452 vboxuser@course.prafdin.ru 'echo OK; uname -a'
@@ -47,7 +46,7 @@ jobs:
             docker run -d --name '${CONTAINER_NAME}' -p 80:80 -e APP_ENV=production '${IMAGE_NAME}'
 
             for i in \$(seq 1 20); do
-                if curl -s http://app.\$ID.\$PROXY/ >/dev/null; then
+                if curl -s http://app.terebilkin.course.prafdin.ru/ >/dev/null; then
                 echo 'App is reachable'
                 exit 0
                 fi
