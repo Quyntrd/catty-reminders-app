@@ -23,22 +23,21 @@ jobs:
       - name: Test SSH connection (verbose)
         run: ssh -o StrictHostKeyChecking=no -vvv -p 2452 vboxuser@course.prafdin.ru 'echo OK; uname -a'
 
-      - name: Deploy Docker container
+      - name: Deploy Docker container from GHCR
         run: |
           ssh -o StrictHostKeyChecking=no -p 2452 vboxuser@course.prafdin.ru '
-            set -euxo pipefail;
+            set -euxo pipefail
 
             APP_DIR=/home/vboxuser/Desktop/DevOps/catty-reminders-app
-
             CONTAINER_NAME=catty-reminders
-            IMAGE_NAME=catty-reminders-app:latest
+            IMAGE_NAME=ghcr.io/<USERNAME>/catty-reminders-app:latest
+
+            echo $GHCR_PAT | docker login ghcr.io -u <USERNAME> --password-stdin
 
             if docker ps -a --format "{{.Names}}" | grep -Eq "^${CONTAINER_NAME}$"; then
               docker stop ${CONTAINER_NAME}
               docker rm ${CONTAINER_NAME}
             fi
-
-            cd $APP_DIR
 
             docker run -d \
               --name ${CONTAINER_NAME} \
@@ -48,5 +47,13 @@ jobs:
 
             docker ps | grep ${CONTAINER_NAME}
 
-            curl -f http://app.$ID.$PROXY || echo "App not reachable"
+            for i in $(seq 1 20); do
+              if curl -s http://app.$ID.$PROXY/ >/dev/null; then
+                echo "App is reachable"
+                exit 0
+              fi
+              sleep 1
+            done
+            echo "App is not reachable" >&2
+            exit 1
           '
