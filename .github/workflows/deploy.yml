@@ -1,0 +1,60 @@
+name: CD (ssh-agent)
+
+on:
+  release:
+    types: [published]
+  push:
+    tags:
+      - "v*"    
+
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Start ssh-agent and add key
+        uses: webfactory/ssh-agent@v0.7.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Set variables
+        run: |
+          OWNER_LOWER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "OWNER_LOWER=${OWNER_LOWER}" >> $GITHUB_ENV
+          echo "IMAGE_NAME=ghcr.io/${OWNER_LOWER}/catty-reminders-app:latest" >> $GITHUB_ENV
+          echo "CONTAINER_NAME=catty-reminders" >> $GITHUB_ENV
+          echo "APP_DIR=/home/vboxuser/Desktop/DevOps/catty-reminders-app" >> $GITHUB_ENV
+
+      - name: Test SSH connection
+        run: ssh -o StrictHostKeyChecking=no -vvv -p 2452 vboxuser@course.prafdin.ru 'echo OK; uname -a'
+
+      - name: Deploy Docker container on server
+        run: |
+            ssh -o StrictHostKeyChecking=no -p 2452 vboxuser@course.prafdin.ru bash -c "
+            set -euxo pipefail
+            IMAGE_NAME=ghcr.io/quyntrd/catty-reminders-app:latest
+            CONTAINER_NAME=catty-reminders
+
+            # Остановить старый контейнер, если существует
+            docker ps -a --format '{{.Names}}' | grep -Eq "^${CONTAINER_NAME}$" && docker stop "${CONTAINER_NAME}" && docker rm "${CONTAINER_NAME}"
+
+            # Обновить образ из GHCR
+            docker pull ghcr.io/quyntrd/catty-reminders-app:latest
+
+            # Запустить новый контейнер
+            docker run -d --name "${CONTAINER_NAME}" -p 8181:8181 -e APP_ENV=production ghcr.io/quyntrd/catty-reminders-app:latest
+
+            for i in \$(seq 1 20); do
+                if curl -s http://app.terebilkin.course.prafdin.ru/ >/dev/null; then
+                echo 'App is reachable'
+                exit 0
+                fi
+                sleep 1
+            done
+            echo 'App is not reachable' >&2
+            exit 1
+            "
