@@ -1,27 +1,41 @@
+# app/utils/mysql_storage.py
 """
-MySQLStorage — реализация хранилища на MySQL/MariaDB, совместимая с API
-ReminderStorage из storage.py. Использует mysql-connector-python.
-Автоматически создаёт таблицы при инициализации.
+Совместимая реализация MySQLStorage.
+Поддерживает вызов:
+    MySQLStorage(owner, db_config=...)
+или
+    MySQLStorage(owner, host=..., user=..., password=..., database=..., port=...)
+Если db_config задан, он может быть dict с ключами:
+  host, port, user, password, database
 """
 
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from pydantic import BaseModel
-from mysql.connector import pooling
+import os
+
+try:
+    import mysql.connector
+    from mysql.connector import pooling
+except Exception as e:
+    # Отложенная ошибка при отсутствии зависимости — чтобы импорт модуля не крашил весь процесс сразу
+    mysql = None
+    pooling = None
+    mysql_import_err = e
+else:
+    mysql_import_err = None
+
 from app.utils.exceptions import NotFoundException, ForbiddenException
 
-# Используем те же Pydantic-модели как в storage.py
 class ReminderItem(BaseModel):
     id: int
     list_id: int
     description: str
     completed: bool
 
-
 class ReminderList(BaseModel):
     id: int
     owner: str
     name: str
-
 
 class SelectedList(BaseModel):
     id: int
@@ -29,31 +43,59 @@ class SelectedList(BaseModel):
     name: str
     items: List[ReminderItem]
 
-
 class MySQLStorage:
-    def init(
-        self,
-        owner: str,
-        host: str = "127.0.0.1",
-        port: int = 3306,
-        user: str = "root",
-        password: str = "",
-        database: str = "cattydb",
-        pool_name: str = "mypool",
-        pool_size: int = 5,
-    ) -> None:
+    def __init__(self, owner: str, db_config: Optional[Dict[str, Any]] = None, **kwargs) -> None:
+        """
+        owner: имя владельца (username)
+        db_config: словарь с keys: host, port, user, password, database
+        kwargs: альтернативный способ передачи host/user/password/database/port
+        """
+        if mysql_import_err is not None:
+            raise RuntimeError("mysql-connector-python is required but not installed") from mysql_import_err
+
         self.owner = owner
-        self._pool = pooling.MySQLConnectionPool(
-            pool_name=pool_name,
-            pool_size=pool_size,
-            host=host,
-            port=port,
-            user=user,
-            password=password,
-            database=database,
-            autocommit=True,
-        )
-        # Создадим таблицы, если их нет
+
+        # Сначала берем параметры из db_config (если есть), затем из kwargs, затем из env/defaults
+        cfg = {}
+        if db_config and isinstance(db_config, dict):
+            cfg.update(db_config)
+
+        # поддержка старых вызовов, где параметрами могли передавать host/user/... напрямую
+        for k in ("host", "port", "user", "password", "database"):
+            if k in kwargs and kwargs[k] is not None:
+                cfg[k] = kwargs[k]
+
+        # подмена из окружения, если не указано
+        cfg.setdefault("host", os.getenv("MYSQL_HOST", "127.0.0.1"))
+        cfg.setdefault("port", int(os.getenv("MYSQL_PORT", "3306")))
+        cfg.setdefault("user", os.getenv("MYSQL_USER", "catty"))
+        cfg.setdefault("password", os.getenv("MYSQL_PASSWORD", "secret"))
+        cfg.setdefault("database", os.getenv("MYSQL_DATABASE", "cattydb"))
+
+        self._host = cfg["host"]
+        self._port = int(cfg["port"])
+        self._user = cfg["user"]
+        self._password = cfg["password"]
+        self._database = cfg["database"]
+
+        # Пул соединений (autocommit=True)
+        pool_name = f"pool_{self.owner}"
+        try:
+            self._pool = pooling.MySQLConnectionPool(
+                pool_name=pool_name,
+                pool_size=5,
+                host=self._host,
+                port=self._port,
+                user=self._user,
+                password=self._password,
+                database=self._database,
+                autocommit=True,
+            )
+        except Exception as e:
+            # если не получилось создать пул (например база не существует), пробуем создать простое соединение
+            raise
+
+        # Создадим схему (таблицы) при инициализации
         self._ensure_schema()
 
     # -------------------------
@@ -76,7 +118,7 @@ class MySQLStorage:
               id INT AUTO_INCREMENT PRIMARY KEY,
               list_id INT NOT NULL,
               description TEXT NOT NULL,
-              completed TINYINT(1) NOT NULL DEFAULT 0,
+completed TINYINT(1) NOT NULL DEFAULT 0,
               FOREIGN KEY (list_id) REFERENCES reminder_lists(id) ON DELETE CASCADE
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
             """,
@@ -97,9 +139,6 @@ class MySQLStorage:
         finally:
             conn.close()
 
-    # -------------------------
-    # Private helpers
-    # -------------------------
     def _fetchone(self, query: str, params: tuple = ()):
         conn = self._get_conn()
         try:
@@ -133,10 +172,10 @@ class MySQLStorage:
             return lastid
         finally:
             conn.close()
-# -------------------------
-    # Реализация API (аналог storage.py)
+
     # -------------------------
-    # Private getters that raise the same exceptions
+    # API (аналог storage.py)
+    # -------------------------
     def _get_raw_list(self, list_id: int):
         row = self._fetchone("SELECT * FROM reminder_lists WHERE id = %s", (list_id,))
         if not row:
@@ -149,7 +188,6 @@ class MySQLStorage:
         row = self._fetchone("SELECT * FROM reminder_items WHERE id = %s", (item_id,))
         if not row:
             raise NotFoundException()
-        # verify list exists (and owner)
         self._verify_list_exists(row["list_id"])
         return row
 
@@ -159,7 +197,6 @@ class MySQLStorage:
     def _verify_item_exists(self, item_id: int) -> None:
         self._get_raw_item(item_id)
 
-    # ----- Lists -----
     def create_list(self, name: str) -> int:
         lastid = self._execute(
             "INSERT INTO reminder_lists (owner, name) VALUES (%s, %s)",
@@ -168,7 +205,6 @@ class MySQLStorage:
         return int(lastid)
 
     def delete_list(self, list_id: int) -> None:
-        # verify and then delete (items cascade)
         self._verify_list_exists(list_id)
         self._execute("DELETE FROM reminder_lists WHERE id = %s", (list_id,))
 
@@ -191,9 +227,7 @@ class MySQLStorage:
         self._get_raw_list(list_id)
         self._execute("UPDATE reminder_lists SET name = %s WHERE id = %s", (new_name, list_id))
 
-    # ----- Items -----
     def add_item(self, list_id: int, description: str) -> int:
-        # ensure list exists & owner matches
         self._verify_list_exists(list_id)
         lastid = self._execute(
             "INSERT INTO reminder_items (list_id, description, completed) VALUES (%s, %s, %s)",
@@ -201,7 +235,8 @@ class MySQLStorage:
         )
         return int(lastid)
 
-    def delete_item(self, item_id: int) -> None:
+    def delete_item(self,
+item_id: int) -> None:
         self._verify_item_exists(item_id)
         self._execute("DELETE FROM reminder_items WHERE id = %s", (item_id,))
 
@@ -238,7 +273,7 @@ class MySQLStorage:
     def update_item_description(self, item_id: int, new_description: str) -> None:
         self._get_raw_item(item_id)
         self._execute("UPDATE reminder_items SET description = %s WHERE id = %s", (new_description, item_id))
-# ----- Selected lists -----
+
     def get_selected_list_id(self) -> Optional[int]:
         row = self._fetchone(
             "SELECT list_id FROM selected_lists WHERE owner = %s LIMIT 1", (self.owner,)
@@ -255,7 +290,6 @@ class MySQLStorage:
             reminder_list = self.get_list(list_id)
             reminder_items = self.get_items(list_id)
         except (NotFoundException, ForbiddenException):
-            # reset selected to null if not valid
             self._execute("UPDATE selected_lists SET list_id = NULL WHERE owner = %s", (self.owner,))
             return None
 
@@ -267,7 +301,6 @@ class MySQLStorage:
         )
 
     def set_selected_list(self, list_id: Optional[int]) -> None:
-        # upsert by owner
         existing = self._fetchone("SELECT id FROM selected_lists WHERE owner = %s", (self.owner,))
         if existing:
             self._execute("UPDATE selected_lists SET list_id = %s WHERE owner = %s", (list_id, self.owner))
@@ -277,7 +310,6 @@ class MySQLStorage:
     def reset_selected_after_delete(self, deleted_id: int) -> None:
         row = self._fetchone("SELECT list_id FROM selected_lists WHERE owner = %s", (self.owner,))
         if row and row.get("list_id") == deleted_id:
-            # pick first list if exists
             first = self._fetchone("SELECT id FROM reminder_lists WHERE owner = %s ORDER BY id LIMIT 1", (self.owner,))
             list_id = int(first["id"]) if first else None
             self.set_selected_list(list_id)
