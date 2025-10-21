@@ -15,6 +15,23 @@ jobs:
   build-test-and-publish:
     runs-on: ubuntu-latest
 
+    # добавляем сервис БД
+    services:
+      mariadb:
+        image: mariadb:10.11
+        env:
+          MYSQL_ROOT_PASSWORD: rootpass
+          MYSQL_DATABASE: cattydb
+          MYSQL_USER: catty
+          MYSQL_PASSWORD: secret
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost --silent"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=20
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -46,11 +63,43 @@ jobs:
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           if [ -f requirements-test.txt ]; then pip install -r requirements-test.txt; fi
 
+      # Экспортируем переменные БД в окружение job'а, чтобы приложение их подхватило
+      - name: Export DB env for app/tests
+        run: |
+          echo "MYSQL_HOST=127.0.0.1" >> $GITHUB_ENV
+          echo "MYSQL_PORT=3306" >> $GITHUB_ENV
+          echo "MYSQL_USER=catty" >> $GITHUB_ENV
+          echo "MYSQL_PASSWORD=secret" >> $GITHUB_ENV
+          echo "MYSQL_DATABASE=cattydb" >> $GITHUB_ENV
+
+      - name: Wait for MariaDB to become available (python check)
+        run: |
+          source .venv/bin/activate
+          python - <<'PY'
+          import os, time, sys
+          import mysql.connector
+          host=os.getenv("MYSQL_HOST","127.0.0.1")
+          port=int(os.getenv("MYSQL_PORT","3306"))
+          user=os.getenv("MYSQL_USER","catty")
+          password=os.getenv("MYSQL_PASSWORD","secret")
+          db=os.getenv("MYSQL_DATABASE","cattydb")
+          for i in range(40):
+          try:
+              conn = mysql.connector.connect(host=host, port=port, user=user, password=password, database=db)
+              conn.close()
+              print("MariaDB available")
+              sys.exit(0)
+          except Exception as e:
+              print("waiting for db...", i, str(e))
+              time.sleep(2)
+              print("DB did not become ready", file=sys.stderr)
+              sys.exit(1)
+              PY
+
       - name: Start app (uvicorn) in background for integration tests
         run: |
           source .venv/bin/activate
           nohup uvicorn app.main:app --host 0.0.0.0 --port 8181 > uvicorn.log 2>&1 &
-
       - name: Wait for app to be ready
         run: |
           for i in $(seq 1 30); do
@@ -68,6 +117,11 @@ jobs:
         env:
           BASE_URL: http://127.0.0.1:8181
           PYTHONPATH: ${{ github.workspace }}
+          MYSQL_HOST: 127.0.0.1
+          MYSQL_PORT: 3306
+          MYSQL_USER: catty
+          MYSQL_PASSWORD: secret
+          MYSQL_DATABASE: cattydb
         run: |
           source .venv/bin/activate
           pytest -q
@@ -78,7 +132,6 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Build and push Docker image to GHCR
         uses: docker/build-push-action@v4
         with:
