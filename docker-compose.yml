@@ -1,6 +1,3 @@
-# docker-compose.yml
-version: "3.9"
-
 x-common-labels: &common_labels
   project: catty-reminders
   managed-by: github-actions
@@ -11,10 +8,14 @@ services:
     container_name: catty-reminders
     restart: unless-stopped
     depends_on:
-      - db
+      - mysql
     environment:
       - APP_ENV=${APP_ENV:-production}
-      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      - MYSQL_HOST=${MYSQL_HOST:-mysql}
+      - MYSQL_PORT=${MYSQL_PORT:-3306}
+      - MYSQL_USER=${MYSQL_USER:-catty}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-cattypass}
+      - MYSQL_DATABASE=${MYSQL_DATABASE:-cattydb}
     ports:
       - "${HOST_PORT:-8181}:${CONTAINER_PORT:-8181}"
     labels:
@@ -27,22 +28,29 @@ services:
     networks:
       - appnet
 
-  db:
-    image: postgres:15
-    container_name: catty-db
+  mysql:
+    image: mysql:8.0
+    container_name: catty-mysql
     restart: unless-stopped
     environment:
-      - POSTGRES_USER=${POSTGRES_USER:-catty}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-cattypass}
-      - POSTGRES_DB=${POSTGRES_DB:-cattydb}
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-rootpass}
+      - MYSQL_DATABASE=${MYSQL_DATABASE:-cattydb}
+      - MYSQL_USER=${MYSQL_USER:-catty}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-cattypass}
     volumes:
-      - db-data:/var/lib/postgresql/data
+      - mysql-data:/var/lib/mysql
+    command: --default-authentication-plugin=mysql_native_password
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
     networks:
       - appnet
 
 volumes:
-  db-data:
-    name: catty_db_data
+  mysql-data:
+    name: catty_mysql_data
 
 networks:
   appnet:
