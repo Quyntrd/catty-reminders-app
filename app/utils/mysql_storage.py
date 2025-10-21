@@ -6,8 +6,7 @@ ReminderStorage из storage.py. Использует mysql-connector-python.
 
 from typing import List, Optional
 from pydantic import BaseModel
-import mysql.connector
-from mysql.connector import pooling, Error as MySQLError
+from mysql.connector import pooling
 from app.utils.exceptions import NotFoundException, ForbiddenException
 
 # Используем те же Pydantic-модели как в storage.py
