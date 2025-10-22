@@ -9,6 +9,6 @@
     "port": 3306,
     "user": "root",
     "password": "mypass",
-    "database": "catty_reminders"
+    "database": "catty-mysql"
   }
 }
